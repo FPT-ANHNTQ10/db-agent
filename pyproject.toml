@@ -6,10 +6,13 @@ authors = [
   { name = "Database Agent Team", email = "noreply@example.com" }
 ]
 license = { text = "Apache-2.0" }
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp==2.11.3",
   "pydantic>=2.5.0",
+  "sqlalchemy>=2.0.0",
+  "psycopg2-binary>=2.9.0",
 ]
 
 [build-system]

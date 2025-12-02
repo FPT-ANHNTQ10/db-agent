@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: db-agent-postgres
+    environment:
+      POSTGRES_DB: dbagent
+      POSTGRES_USER: dbagent
+      POSTGRES_PASSWORD: dbagent123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbagent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - db-agent-network
+
+  # DB Agent MCP Server
+  db-agent-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: db-agent-mcp-app
+    environment:
+      DATABASE_URL: postgresql://dbagent:dbagent123@postgres:5432/dbagent
+      LOG_LEVEL: INFO
+    ports:
+      - "9002:9002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - db-agent-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  db-agent-network:
+    driver: bridge
