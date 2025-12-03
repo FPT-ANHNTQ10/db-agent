@@ -35,42 +35,24 @@ pipeline {
             }
         }
        
-        stage('Build & Test') {
+        stage('Build & Push Docker Image') {
             steps {
-                echo 'Building Docker image and running tests...'
                 script {
-                    // Build Docker image (validates Python environment)
-                    sh """
-                        docker build -t ${FULL_IMAGE_NAME} .
-                        docker tag ${FULL_IMAGE_NAME} ${LATEST_IMAGE_NAME}
-                    """
+                    // Use Docker Pipeline plugin to build and push
+                    dockerImage = docker.build("${FULL_IMAGE_NAME}", ".")
                    
                     // Run tests inside container (optional - uncomment when tests are ready)
-                    // sh """
-                    //     docker run --rm ${FULL_IMAGE_NAME} pytest tests/
-                    // """
+                    // dockerImage.inside {
+                    //     sh 'pytest tests/'
+                    // }
                    
-                    echo "Docker build successful - Python environment validated"
-                }
-            }
-        }
-       
-        stage('Push to ACR') {
-            steps {
-                echo 'Pushing Docker image to Azure Container Registry...'
-                script {
-                    withCredentials([usernamePassword(
-                        credentialsId: "${ACR_CREDENTIALS_ID}",
-                        usernameVariable: 'ACR_USERNAME',
-                        passwordVariable: 'ACR_PASSWORD'
-                    )]) {
-                        sh """
-                            echo ${ACR_PASSWORD} | docker login ${ACR_REGISTRY} -u ${ACR_USERNAME} --password-stdin
-                            docker push ${FULL_IMAGE_NAME}
-                            docker push ${LATEST_IMAGE_NAME}
-                            docker logout ${ACR_REGISTRY}
-                        """
+                    // Push to ACR using Docker plugin
+                    docker.withRegistry("https://${ACR_REGISTRY}", "${ACR_CREDENTIALS_ID}") {
+                        dockerImage.push("${IMAGE_TAG}")
+                        dockerImage.push("latest")
                     }
+                   
+                    echo "Docker image built and pushed successfully!"
                 }
             }
         }
@@ -88,19 +70,6 @@ pipeline {
                 }
             }
         }
-       
-        stage('Cleanup') {
-            steps {
-                echo 'Cleaning up local Docker images...'
-                script {
-                    sh """
-                        docker rmi ${FULL_IMAGE_NAME} || true
-                        docker rmi ${LATEST_IMAGE_NAME} || true
-                        docker image prune -f || true
-                    """
-                }
-            }
-        }
     }
    
     post {
@@ -112,8 +81,11 @@ pipeline {
             echo "Pipeline failed. Please check the logs."
         }
         always {
+            // Cleanup workspace
             cleanWs()
+           
+            // The Docker plugin automatically manages image lifecycle
+            // No manual cleanup needed - Jenkins will handle it
         }
     }
 }
- 
