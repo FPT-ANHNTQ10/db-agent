@@ -1,5 +1,39 @@
 pipeline {
-    agent any
+    agent {
+        kubernetes {
+            yaml """
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: agent
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: docker
+    image: docker:24-dind
+    securityContext:
+      privileged: true
+    volumeMounts:
+    - name: docker-storage
+      mountPath: /var/lib/docker
+    env:
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
+  - name: jnlp
+    image: jenkins/inbound-agent:latest-jdk17
+    args:
+    - \$(JENKINS_SECRET)
+    - \$(JENKINS_NAME)
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+  volumes:
+  - name: docker-storage
+    emptyDir: {}
+"""
+        }
+    }
    
     environment {
         // Azure Container Registry credentials
@@ -37,22 +71,39 @@ pipeline {
        
         stage('Build & Push Docker Image') {
             steps {
-                script {
-                    // Use Docker Pipeline plugin to build and push
-                    dockerImage = docker.build("${FULL_IMAGE_NAME}", ".")
-                   
-                    // Run tests inside container (optional - uncomment when tests are ready)
-                    // dockerImage.inside {
-                    //     sh 'pytest tests/'
-                    // }
-                   
-                    // Push to ACR using Docker plugin
-                    docker.withRegistry("https://${ACR_REGISTRY}", "${ACR_CREDENTIALS_ID}") {
-                        dockerImage.push("${IMAGE_TAG}")
-                        dockerImage.push("latest")
+                container('docker') {
+                    script {
+                        // Wait for Docker daemon to be ready
+                        sh '''
+                            timeout=60
+                            while ! docker info >/dev/null 2>&1; do
+                                timeout=$((timeout - 1))
+                                if [ $timeout -le 0 ]; then
+                                    echo "Docker daemon failed to start"
+                                    exit 1
+                                fi
+                                echo "Waiting for Docker daemon to start..."
+                                sleep 1
+                            done
+                            echo "Docker daemon is ready"
+                        '''
+                       
+                        // Build Docker image
+                        sh "docker build -t ${FULL_IMAGE_NAME} -t ${LATEST_IMAGE_NAME} ."
+                       
+                        // Login to ACR and push images
+                        withCredentials([usernamePassword(credentialsId: "${ACR_CREDENTIALS_ID}",
+                                                         passwordVariable: 'ACR_PASSWORD',
+                                                         usernameVariable: 'ACR_USERNAME')]) {
+                            sh """
+                                echo \$ACR_PASSWORD | docker login ${ACR_REGISTRY} -u \$ACR_USERNAME --password-stdin
+                                docker push ${FULL_IMAGE_NAME}
+                                docker push ${LATEST_IMAGE_NAME}
+                            """
+                        }
+                       
+                        echo "Docker image built and pushed successfully!"
                     }
-                   
-                    echo "Docker image built and pushed successfully!"
                 }
             }
         }
@@ -89,3 +140,4 @@ pipeline {
         }
     }
 }
+ 
