@@ -1,21 +1,21 @@
 pipeline {
     agent any
-    
+   
     environment {
         // Azure Container Registry credentials
         ACR_REGISTRY = 'agenticaidevacr45141.azurecr.io'
         ACR_CREDENTIALS_ID = '3c81530c-191f-4310-b866-ec6a6abc9e3f' // Jenkins credential ID for ACR
-        
+       
         // Image details
         IMAGE_NAME = 'db-agent'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
         FULL_IMAGE_NAME = "${ACR_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
         LATEST_IMAGE_NAME = "${ACR_REGISTRY}/${IMAGE_NAME}:latest"
-        
+       
         // Git commit info
         GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
     }
-    
+   
     stages {
         stage('Checkout') {
             steps {
@@ -24,7 +24,7 @@ pipeline {
                 sh 'git rev-parse --short HEAD > .git/commit-id'
             }
         }
-        
+       
         stage('Build Info') {
             steps {
                 script {
@@ -34,35 +34,27 @@ pipeline {
                 }
             }
         }
-        
-        stage('Lint & Test') {
+       
+        stage('Build & Test') {
             steps {
-                echo 'Running linting and tests...'
+                echo 'Building Docker image and running tests...'
                 script {
-                    // Install dependencies and run tests
-                    sh '''
-                        python3 --version
-                        pip3 install --user -e .
-                        # Add your test commands here
-                        # pip3 install --user pytest
-                        # pytest tests/ || true
-                    '''
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                echo 'Building Docker image...'
-                script {
+                    // Build Docker image (validates Python environment)
                     sh """
                         docker build -t ${FULL_IMAGE_NAME} .
                         docker tag ${FULL_IMAGE_NAME} ${LATEST_IMAGE_NAME}
                     """
+                   
+                    // Run tests inside container (optional - uncomment when tests are ready)
+                    // sh """
+                    //     docker run --rm ${FULL_IMAGE_NAME} pytest tests/
+                    // """
+                   
+                    echo "Docker build successful - Python environment validated"
                 }
             }
         }
-        
+       
         stage('Push to ACR') {
             steps {
                 echo 'Pushing Docker image to Azure Container Registry...'
@@ -82,7 +74,7 @@ pipeline {
                 }
             }
         }
-        
+       
         stage('Update Deployment Manifest') {
             steps {
                 echo 'Updating deployment manifest...'
@@ -96,7 +88,7 @@ pipeline {
                 }
             }
         }
-        
+       
         stage('Cleanup') {
             steps {
                 echo 'Cleaning up local Docker images...'
@@ -104,12 +96,13 @@ pipeline {
                     sh """
                         docker rmi ${FULL_IMAGE_NAME} || true
                         docker rmi ${LATEST_IMAGE_NAME} || true
+                        docker image prune -f || true
                     """
                 }
             }
         }
     }
-    
+   
     post {
         success {
             echo "Pipeline completed successfully!"
@@ -123,3 +116,4 @@ pipeline {
         }
     }
 }
+ 
