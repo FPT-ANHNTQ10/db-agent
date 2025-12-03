@@ -8,7 +8,7 @@ metadata:
   labels:
     jenkins: agent
 spec:
-  serviceAccountName: jenkins
+  serviceAccountName: jenkins-admin
   containers:
   - name: docker
     image: docker:24-dind
@@ -141,3 +141,4 @@ spec:
     }
 }
  
+
