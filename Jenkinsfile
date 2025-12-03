@@ -22,9 +22,6 @@ spec:
       value: ""
   - name: jnlp
     image: jenkins/inbound-agent:latest-jdk17
-    args:
-    - \$(JENKINS_SECRET)
-    - \$(JENKINS_NAME)
     env:
     - name: DOCKER_HOST
       value: tcp://localhost:2375
@@ -141,4 +138,5 @@ spec:
     }
 }
  
+
 
