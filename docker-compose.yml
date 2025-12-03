@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: db-agent-postgres
+    environment:
+      POSTGRES_USER: dbagent
+      POSTGRES_PASSWORD: dbagent123
+      POSTGRES_DB: testdb
+    ports:
+      - "5432:5432"
+    # Giới hạn tài nguyên tối thiểu
+    mem_limit: 256m           # Giới hạn RAM tối đa 256MB
+    mem_reservation: 128m     # Đảm bảo tối thiểu 128MB
+    cpus: 0.5                 # Giới hạn 50% CPU (0.5 core)
+    shm_size: 64m            # Shared memory cho PostgreSQL
+    command:
+      - "postgres"
+      - "-c"
+      - "log_lock_waits=on"
+      - "-c"
+      - "deadlock_timeout=1s"
+      - "-c"
+      - "log_statement=all"
+      - "-c"
+      - "shared_buffers=32MB"          # Giảm shared buffers
+      - "-c"
+      - "max_connections=20"           # Giảm số connection
+      - "-c"
+      - "work_mem=4MB"                 # Giảm work memory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dbagent -d testdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: db-agent-mcp-server
+    environment:
+      # Database connection
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: dbagent
+      DB_PASSWORD: dbagent123
+      DB_NAME: testdb
+    ports:
+      - "9002:9002"
+    # Giới hạn tài nguyên cho MCP server
+    mem_limit: 512m
+    mem_reservation: 256m
+    cpus: 1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
